@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -12,23 +11,38 @@ from common.geometry import bbox_center
 from common.schemas import DetectionObject
 
 DINO_MODEL_ID = os.getenv("DINO_MODEL_ID", "IDEA-Research/grounding-dino-base")
-DINO_BOX_THRESHOLD = float(os.getenv("DINO_BOX_THRESHOLD", "0.32"))
-DINO_TEXT_THRESHOLD = float(os.getenv("DINO_TEXT_THRESHOLD", "0.25"))
+DINO_BOX_THRESHOLD = float(os.getenv("DINO_BOX_THRESHOLD", "0.35"))
+DINO_TEXT_THRESHOLD = float(os.getenv("DINO_TEXT_THRESHOLD", "0.30"))
 
 DEFAULT_LABELS = tuple(
     label.strip()
     for label in os.getenv(
         "DINO_LABELS",
-        "person,chair,table,laptop,door,robot,keyboard,mouse,desk,window,cabinet,box,bag,bottle",
+        "person,chair,table,laptop,door,bottle,fish,cube,ball,headphones,plant,book,cup",
     ).split(",")
     if label.strip()
 )
 CLASS_THRESHOLDS = {
-    "person": 0.7,
-    "chair": 0.7,
-    "table": 0.7,
-    "laptop": 0.7,
-    "door": 0.7,
+    "person": 0.42,
+    "chair": 0.40,
+    "table": 0.38,
+    "laptop": 0.42,
+    "door": 0.40,
+    "window": 0.42,
+    "cabinet": 0.42,
+    "box": 0.38,
+    "bag": 0.38,
+    "bottle": 0.40,
+    "keyboard": 0.46,
+    "mouse": 0.46,
+    "robot": 0.46,
+    "fish": 0.44,
+    "cube": 0.40,
+    "ball": 0.40,
+    "headphones": 0.44,
+    "plant": 0.40,
+    "book": 0.40,
+    "cup": 0.40,
 }
 
 
@@ -37,7 +51,7 @@ def get_dino_bundle():
     processor = AutoProcessor.from_pretrained(DINO_MODEL_ID, trust_remote_code=True)
     model = AutoModelForZeroShotObjectDetection.from_pretrained(
         DINO_MODEL_ID,
-        torch_dtype=torch.float32,
+        dtype=torch.float32,
         device_map="auto" if torch.cuda.is_available() else None,
         trust_remote_code=True,
     )
@@ -85,6 +99,20 @@ def _normalize_label(label: str) -> str:
         normalized = normalized[3:]
     if normalized == "desk":
         normalized = "table"
+    if normalized in {"toy fish", "goldfish"}:
+        normalized = "fish"
+    if normalized in {"block", "toy block", "wooden block"}:
+        normalized = "cube"
+    if normalized in {"sphere", "toy ball"}:
+        normalized = "ball"
+    if normalized in {"headset", "earmuffs"}:
+        normalized = "headphones"
+    if normalized in {"potted plant", "flower pot", "flower"}:
+        normalized = "plant"
+    if normalized in {"textbook", "notebook book"}:
+        normalized = "book"
+    if normalized in {"paper cup", "cone cup"}:
+        normalized = "cup"
     return normalized
 
 
@@ -93,17 +121,49 @@ def _is_reasonable(label: str, bbox: list[int], width: int, height: int) -> bool
     bbox_w = bbox[2] - bbox[0]
     bbox_h = bbox[3] - bbox[1]
     aspect = bbox_w / max(bbox_h, 1)
-    if area_ratio < 0.001:
+    touches_border = bbox[0] <= 1 or bbox[1] <= 1 or bbox[2] >= width - 2 or bbox[3] >= height - 2
+
+    if area_ratio < 0.002:
+        return False
+    if label not in {"door", "window"} and area_ratio > 0.55:
+        return False
+    if label in {"keyboard", "mouse", "bottle"} and area_ratio > 0.12:
+        return False
+    if label == "fish" and (area_ratio < 0.003 or area_ratio > 0.18):
+        return False
+    if label == "fish" and (aspect < 0.35 or aspect > 2.8):
+        return False
+    if label == "cube" and (area_ratio < 0.003 or area_ratio > 0.20):
+        return False
+    if label == "cube" and (aspect < 0.6 or aspect > 1.7):
+        return False
+    if label == "ball" and (area_ratio < 0.002 or area_ratio > 0.16):
+        return False
+    if label == "ball" and (aspect < 0.6 or aspect > 1.6):
+        return False
+    if label == "headphones" and (area_ratio < 0.01 or area_ratio > 0.35):
+        return False
+    if label == "plant" and (area_ratio < 0.003 or area_ratio > 0.25):
+        return False
+    if label == "book" and (area_ratio < 0.01 or area_ratio > 0.35):
+        return False
+    if label == "cup" and (area_ratio < 0.002 or area_ratio > 0.16):
+        return False
+    if label in {"keyboard", "mouse", "bottle", "bag", "box", "robot", "cube", "cup"} and touches_border:
         return False
     if label == "person" and area_ratio > 0.65:
         return False
-    if label == "person" and bbox_h < height * 0.18:
+    if label == "person" and bbox_h < height * 0.20:
         return False
-    if label == "laptop" and (aspect < 0.8 or aspect > 3.2):
+    if label == "laptop" and (aspect < 0.8 or aspect > 3.0):
         return False
     if label == "door" and aspect > 1.2:
         return False
     if label == "chair" and (aspect < 0.25 or aspect > 1.8):
+        return False
+    if label == "table" and bbox_w < width * 0.12:
+        return False
+    if label == "window" and area_ratio < 0.03:
         return False
     return True
 
@@ -163,6 +223,9 @@ def run_dino(
         detected_labels = result.get("text_labels") or result.get("labels") or []
         for box, score, detected_label in zip(result["boxes"], result["scores"], detected_labels):
             normalized_label = _normalize_label(str(detected_label))
+            confidence = float(score.item())
+            if confidence < CLASS_THRESHOLDS.get(normalized_label, DINO_BOX_THRESHOLD):
+                continue
 
             clipped_bbox = _clip_bbox([int(round(v)) for v in box.tolist()], width, height)
             if clipped_bbox is None or not _is_reasonable(normalized_label, clipped_bbox, width, height):
@@ -173,7 +236,7 @@ def run_dino(
                     label=normalized_label,
                     bbox_2d=clipped_bbox,
                     center_2d=bbox_center(clipped_bbox),
-                    confidence=float(score.item()),
+                    confidence=confidence,
                     source="dino",
                 )
             )

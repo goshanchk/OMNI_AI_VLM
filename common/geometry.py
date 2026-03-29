@@ -21,7 +21,13 @@ def pixel_to_3d(
 ) -> tuple[float, float, float]:
     py = int(np.clip(py, 0, depth_map.shape[0] - 1))
     px = int(np.clip(px, 0, depth_map.shape[1] - 1))
-    z = float(depth_map[py, px])
+    y1 = max(0, py - 2)
+    y2 = min(depth_map.shape[0], py + 3)
+    x1 = max(0, px - 2)
+    x2 = min(depth_map.shape[1], px + 3)
+    depth_crop = depth_map[y1:y2, x1:x2]
+    valid_depths = depth_crop[np.isfinite(depth_crop) & (depth_crop > 0)]
+    z = float(np.median(valid_depths)) if valid_depths.size else float(depth_map[py, px])
     x = (px - intrinsics.cx0) * z / intrinsics.fx
     y = (py - intrinsics.cy0) * z / intrinsics.fy
     return x, y, z

@@ -7,8 +7,17 @@ import numpy as np
 
 
 def _draw_label(frame: np.ndarray, text: str, x: int, y: int, color: tuple[int, int, int]) -> None:
-    cv2.rectangle(frame, (x, max(y - 22, 0)), (x + max(120, len(text) * 8), y), color, -1)
-    cv2.putText(frame, text, (x + 4, max(y - 6, 12)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.18
+    thickness = 1
+    (text_w, text_h), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+    pad_x = 1
+    pad_y = 1
+    top = max(y - text_h - baseline - pad_y * 2, 0)
+    bottom = max(y, text_h + baseline + pad_y * 2)
+    right = x + text_w + pad_x * 2
+    cv2.rectangle(frame, (x, top), (right, bottom), color, -1)
+    cv2.putText(frame, text, (x + pad_x, bottom - baseline - pad_y), font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
 
 
 def _scale_point(point: list[int], scale_x: float, scale_y: float) -> tuple[int, int] | None:
@@ -62,15 +71,15 @@ def draw_vision_result(frame_bgr: np.ndarray, payload: dict[str, Any]) -> np.nda
         scaled_center = _scale_point(center, scale_x, scale_y)
         if scaled_bbox is not None:
             x1, y1, x2, y2 = scaled_bbox
-            cv2.rectangle(rendered, (x1, y1), (x2, y2), (60, 220, 60), 2)
+            cv2.rectangle(rendered, (x1, y1), (x2, y2), (60, 220, 60), 1, cv2.LINE_AA)
             _draw_label(rendered, label_text, x1, y1, (60, 220, 60))
         if scaled_center is not None:
-            cv2.circle(rendered, scaled_center, 4, (60, 220, 60), -1)
+            cv2.circle(rendered, scaled_center, 3, (60, 220, 60), -1, cv2.LINE_AA)
 
     scaled_wall_bbox = _scale_bbox(wall.get("bbox_2d", []), scale_x, scale_y)
     if wall.get("found") and scaled_wall_bbox is not None:
         x1, y1, x2, y2 = scaled_wall_bbox
-        cv2.rectangle(rendered, (x1, y1), (x2, y2), (60, 160, 255), 2)
+        cv2.rectangle(rendered, (x1, y1), (x2, y2), (60, 160, 255), 1, cv2.LINE_AA)
         _draw_label(rendered, "wall", x1, y1, (60, 160, 255))
 
     scaled_surface_bbox = _scale_bbox(projection_surface.get("bbox_2d", []), scale_x, scale_y)
@@ -84,29 +93,29 @@ def draw_vision_result(frame_bgr: np.ndarray, payload: dict[str, Any]) -> np.nda
             label += f" {suitability:.2f}"
         if is_free:
             label += " free"
-        cv2.rectangle(rendered, (x1, y1), (x2, y2), (0, 200, 255), 2)
-        _draw_label(rendered, label, x1, max(y1 - 24, 0), (0, 200, 255))
+        cv2.rectangle(rendered, (x1, y1), (x2, y2), (0, 200, 255), 1, cv2.LINE_AA)
+        _draw_label(rendered, label, x1, max(y1 - 20, 0), (0, 200, 255))
 
     if target:
         scaled_target_center = _scale_point(target.get("pixel_center", []), scale_x, scale_y)
         if scaled_target_center is not None:
-            cv2.circle(rendered, scaled_target_center, 7, (0, 0, 255), 2)
+            cv2.circle(rendered, scaled_target_center, 6, (0, 0, 255), 2, cv2.LINE_AA)
         target_text = f"target={target.get('label', '?')} type={target.get('type', '?')}"
         yaw = target.get("yaw_command")
         if yaw is not None:
             target_text += f" yaw={yaw:.3f}"
-        cv2.putText(rendered, target_text, (12, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 255), 2)
+        cv2.putText(rendered, target_text[:40], (6, 14), cv2.FONT_HERSHEY_SIMPLEX, 0.24, (0, 0, 255), 1, cv2.LINE_AA)
 
     scene_description = vision.get("scene_description")
     if scene_description:
-        cv2.putText(rendered, scene_description[:90], (12, 52), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 0), 2)
+        cv2.putText(rendered, scene_description[:44], (6, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.20, (255, 255, 0), 1, cv2.LINE_AA)
 
     task_prompt = payload.get("task_prompt")
     if task_prompt:
-        cv2.putText(rendered, task_prompt[:100], (12, 78), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 255, 180), 2)
+        cv2.putText(rendered, task_prompt[:46], (6, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.18, (180, 255, 180), 1, cv2.LINE_AA)
 
     surface_reason = projection_surface.get("reason")
     if surface_reason:
-        cv2.putText(rendered, surface_reason[:100], (12, 104), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (150, 220, 255), 2)
+        cv2.putText(rendered, surface_reason[:46], (6, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.18, (150, 220, 255), 1, cv2.LINE_AA)
 
     return rendered

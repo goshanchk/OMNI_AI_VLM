@@ -20,13 +20,36 @@ except ImportError:
 
 MODEL_ID = os.getenv("QWEN_MODEL_ID", "Qwen/Qwen2.5-VL-3B-Instruct")
 MAX_NEW_TOKENS = int(os.getenv("QWEN_MAX_NEW_TOKENS", "512"))
-ALLOWED_LABELS = ("person", "chair", "table", "laptop", "door", "wall")
+ALLOWED_LABELS = (
+    "person",
+    "chair",
+    "table",
+    "laptop",
+    "door",
+    "wall",
+    "bottle",
+    "fish",
+    "window",
+    "cabinet",
+    "box",
+    "bag",
+    "keyboard",
+    "mouse",
+    "robot",
+    "cube",
+    "ball",
+    "headphones",
+    "plant",
+    "book",
+    "cup",
+)
 
 
 def _build_prompt(
     image_width: int,
     image_height: int,
     preferred_label: str | None,
+    target_label: str | None,
     task_prompt: str | None,
     requested_labels: list[str] | None,
     projection_target: str | None,
@@ -37,6 +60,7 @@ def _build_prompt(
             f"\nPriority target label: {preferred_label}. "
             f"If that label is visible, make its bbox especially tight and accurate."
         )
+    target_instruction = f"\nFlight target object label: {target_label}." if target_label else ""
     requested_instruction = f"\nRequested task labels: {', '.join(requested_labels)}." if requested_labels else ""
     projection_instruction = f"\nPreferred projection target: {projection_target}." if projection_target else ""
     task_instruction = f"\nUser task prompt: {task_prompt}" if task_prompt else ""
@@ -53,6 +77,7 @@ Image size:
 Allowed labels only:
 {", ".join(ALLOWED_LABELS)}
 {preferred_instruction}
+{target_instruction}
 {requested_instruction}
 {projection_instruction}
 {task_instruction}
@@ -70,15 +95,15 @@ Rules:
 9. Prefer a blank wall patch if projecting to wall.
 10. If projecting to the drone's own onboard screen, set surface_type to "drone_screen" and do not invent any external screen or monitor in the scene.
 11. The bbox for projection surface must cover only the usable projection region. For drone_screen, bbox_2d may be empty.
-12. If no confident instance exists, return an empty objects list.
+12. If a flight target object label is provided, detect that object first and include it in objects if visible.
+13. If no confident instance exists, return an empty objects list.
 
 Output schema:
 {{
   "scene_description": "...",
   "objects": [
     {{
-      "label": "person|chair|table|screen|laptop|door|wall",
-      "label": "person|chair|table|laptop|door|wall",
+      "label": "person|chair|table|laptop|door|wall|bottle|fish|window|cabinet|box|bag|keyboard|mouse|robot|cube|ball|headphones|plant|book|cup",
       "bbox_2d": [x1, y1, x2, y2],
       "center_2d": [cx, cy]
     }}
@@ -162,6 +187,28 @@ def _object_is_reasonable(label: str, bbox: list[int], width: int, height: int) 
     if label != "wall" and area_ratio > 0.65:
         return False
     if label == "laptop" and area_ratio > 0.35:
+        return False
+    if label == "bottle" and area_ratio > 0.18:
+        return False
+    if label == "fish" and (area_ratio < 0.002 or area_ratio > 0.20):
+        return False
+    if label == "fish" and aspect_ratio > 4.0:
+        return False
+    if label == "cube" and (area_ratio < 0.003 or area_ratio > 0.20):
+        return False
+    if label == "cube" and aspect_ratio > 1.8:
+        return False
+    if label == "ball" and (area_ratio < 0.002 or area_ratio > 0.18):
+        return False
+    if label == "ball" and aspect_ratio > 1.6:
+        return False
+    if label == "headphones" and (area_ratio < 0.01 or area_ratio > 0.35):
+        return False
+    if label == "plant" and (area_ratio < 0.003 or area_ratio > 0.25):
+        return False
+    if label == "book" and (area_ratio < 0.01 or area_ratio > 0.35):
+        return False
+    if label == "cup" and (area_ratio < 0.002 or area_ratio > 0.16):
         return False
     if label == "person" and bbox_h < height * 0.12:
         return False
@@ -263,6 +310,7 @@ def _normalize_result(payload: dict[str, Any], image_width: int, image_height: i
 def run_qwen(
     image: Image.Image,
     preferred_label: str | None = None,
+    target_label: str | None = None,
     task_prompt: str | None = None,
     requested_labels: list[str] | None = None,
     projection_target: str | None = None,
@@ -273,6 +321,7 @@ def run_qwen(
         prepped_image.width,
         prepped_image.height,
         preferred_label,
+        target_label,
         task_prompt,
         requested_labels,
         projection_target,

@@ -11,6 +11,7 @@ dependencies:
   - pillow>=10
   - opencv
   - requests>=2.31
+  - msgpack>=1.0.8
   - regex>=2024.11.6
   - sentencepiece>=0.2
   - fastapi>=0.115
@@ -24,3 +25,4 @@ dependencies:
       - transformers>=4.49.0
       - ultralytics>=8.3.0
       - pyrealsense2
+      - pyzmq>=26.0.0

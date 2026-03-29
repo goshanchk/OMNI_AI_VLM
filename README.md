@@ -8,6 +8,7 @@ Minimal MVP for an indoor drone demo:
 - If depth and intrinsics are provided, the server converts the 2D target into a 3D camera/world target.
 - If depth is not provided, the server falls back to a `yaw_command`.
 - Orange Pi forwards the selected target to the flight stack bridge.
+- `task_prompt` can now specify both the fly-to object and where projection should happen: on a wall or on the drone screen.
 
 ## Repository Layout
 
@@ -152,6 +153,22 @@ python tools/d435i_preview.py \
   --task-prompt "find a person and project on wall"
 ```
 
+Another hybrid-task example:
+
+```bash
+python tools/d435i_preview.py \
+  --server-url http://SERVER_IP:8000/infer \
+  --infer-every 15 \
+  --send-depth \
+  --task-prompt "find a chair and project on drone screen"
+```
+
+`task_prompt` behavior:
+
+- Qwen interprets the scene and decides the projection surface according to the prompt.
+- Grounding DINO focuses on the fly-to object from the prompt instead of grounding every possible object.
+- `target` is selected from the requested fly-to object when specified; projection target selection remains independent.
+
 ## Minimal Orange Pi Setup Without Conda
 
 If Orange Pi is used only as a thin client and all heavy inference runs on the server:
@@ -256,3 +273,50 @@ python -m compileall common orange_pi server tools
 - The server requires model weights to be available locally or downloadable from Hugging Face.
 - `tools/d435i_preview.py` requires `pyrealsense2` and a connected RealSense D435i.
 - `orange_pi/client.py` does not read live RealSense depth; use `tools/d435i_preview.py` for D435i.
+
+
+## Low-Latency ZeroMQ Mode
+
+If HTTP round-trips on Orange Pi introduce too much latency, you can use the ZeroMQ path instead.
+
+This mode keeps the existing inference logic on the server but replaces per-frame HTTP uploads with a low-latency PUSH/PULL transport.
+
+### Server-side ZeroMQ receiver
+
+```bash
+cd /media/imit-learn/ISR_2T3/OMNI_AI_VLM
+source scripts/activate_vlm_hoverai.sh
+python -m server.zmq_receiver --bind tcp://*:5555
+```
+
+Fastest DINO-only mode:
+
+```bash
+cd /media/imit-learn/ISR_2T3/OMNI_AI_VLM
+source scripts/activate_vlm_hoverai.sh
+python -m server.zmq_receiver --bind tcp://*:5555 --disable-qwen
+```
+
+### Orange Pi ZeroMQ sender
+
+```bash
+cd ~/HoverAI_VLM/OMNI_AI_VLM
+source ../.venv/bin/activate
+export PYTHONPATH=$PWD
+python tools/d435i_zmq_sender.py --server-ip 192.168.50.185 --port 5555 --infer-every 1 --infer-width 224 --jpeg-quality 40
+```
+
+With depth:
+
+```bash
+cd ~/HoverAI_VLM/OMNI_AI_VLM
+source ../.venv/bin/activate
+export PYTHONPATH=$PWD
+python tools/d435i_zmq_sender.py --server-ip 192.168.50.185 --port 5555 --infer-every 1 --infer-width 224 --jpeg-quality 40 --send-depth --png-level 1
+```
+
+Notes:
+
+- ZeroMQ mode does not depend on FastAPI or `/infer`.
+- The server still shows the same preview window and JSON logs if enabled.
+- For the lowest latency, start with `--disable-qwen` on the server.
