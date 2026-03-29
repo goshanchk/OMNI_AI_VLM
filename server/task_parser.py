@@ -45,14 +45,6 @@ TARGET_ACTION_MARKERS = (
     "track",
     "follow",
     "target",
-    "найди",
-    "найти",
-    "ищи",
-    "искать",
-    "подлет",
-    "подлеть",
-    "лети к",
-    "подойди к",
 )
 
 PROJECTION_WALL_MARKERS = (
@@ -60,9 +52,6 @@ PROJECTION_WALL_MARKERS = (
     "project on wall",
     "projection wall",
     "on wall",
-    "на стену",
-    "на стене",
-    "проецировать на стену",
 )
 
 PROJECTION_DRONE_SCREEN_MARKERS = (
@@ -71,10 +60,6 @@ PROJECTION_DRONE_SCREEN_MARKERS = (
     "onboard screen",
     "screen mounted on drone",
     "project on drone screen",
-    "на экран дрона",
-    "на экране дрона",
-    "на экран",
-    "на борту",
 )
 
 

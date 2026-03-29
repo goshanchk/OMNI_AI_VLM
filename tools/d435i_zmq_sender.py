@@ -35,13 +35,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--jpeg-quality', type=int, default=40)
     parser.add_argument('--send-depth', action='store_true')
     parser.add_argument('--png-level', type=int, default=1, help='PNG compression level for depth')
-    parser.add_argument('--preferred-label', default=None)
-    parser.add_argument('--prefer-wall', action='store_true')
-    parser.add_argument(
-        '--task-prompt',
-        default=None,
-        help='Free-form task prompt that states the fly-to object and projection target, e.g. "find person and project on drone screen"',
-    )
     parser.add_argument('--show-local', action='store_true', help='Show raw local camera preview')
     return parser.parse_args()
 
@@ -122,9 +115,6 @@ def main() -> None:
                     'cx0': intrinsics['cx0'] * (infer_w / color_bgr.shape[1]),
                     'cy0': intrinsics['cy0'] * (infer_h / color_bgr.shape[0]),
                 },
-                'preferred_label': args.preferred_label,
-                'prefer_wall': bool(args.prefer_wall),
-                'task_prompt': args.task_prompt,
                 'sent_ts': time.time(),
             }
 
