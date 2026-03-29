@@ -1,0 +1,26 @@
+name: vlm_hoverai
+channels:
+  - pytorch
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pytorch
+  - torchvision
+  - numpy>=1.26
+  - pillow>=10
+  - opencv
+  - requests>=2.31
+  - regex>=2024.11.6
+  - sentencepiece>=0.2
+  - fastapi>=0.115
+  - uvicorn>=0.30
+  - pydantic>=2.8
+  - python-multipart>=0.0.9
+  - accelerate>=1.4
+  - jinja2>=3.1.2
+  - markupsafe>=2.1.1
+  - pip:
+      - transformers>=4.49.0
+      - ultralytics>=8.3.0
+      - pyrealsense2
