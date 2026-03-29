@@ -24,6 +24,7 @@ htmlcov/
 .DS_Store
 .idea/
 .vscode/
+.codex/
 
 # Logs and local runtime output
 *.log

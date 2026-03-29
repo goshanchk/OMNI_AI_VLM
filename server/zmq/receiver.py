@@ -18,7 +18,7 @@ if PROJECT_ROOT not in sys.path:
 from common.schemas import DronePose
 from common.visualization import draw_vision_result
 from server.main import run_inference_pipeline
-from server.stats_recorder import append_detection_record, build_detection_record
+from server.stats_recorder import persist_record
 from server.task_parser import parse_task_prompt
 from server.zmq.runtime import (
     LABEL_KEYS,
@@ -54,14 +54,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--disable-dino", action="store_true")
     parser.add_argument("--disable-qwen", action="store_true")
     parser.add_argument("--qwen-every", type=int, default=3, help="Run Qwen every N processed frames and reuse last projection in between")
-    parser.add_argument("--target-hold-sec", type=float, default=1.2, help="Keep the last good target briefly when detection drops out")
+    parser.add_argument("--target-hold-sec", type=float, default=0.6, help="Keep the last good target briefly when detection drops out")
     parser.add_argument("--target-switch-confirm", type=int, default=2, help="Require N consecutive frames before switching to a different target")
-    parser.add_argument("--target-drop-misses", type=int, default=3, help="Drop the current target only after N consecutive missed frames")
-    parser.add_argument("--target-max-jump-px", type=float, default=34.0, help="Allow only small target motion between frames before requiring confirmation")
-    parser.add_argument("--target-smooth-alpha", type=float, default=0.35, help="Blend factor for target smoothing, smaller is steadier")
+    parser.add_argument("--target-drop-misses", type=int, default=2, help="Drop the current target only after N consecutive missed frames")
+    parser.add_argument("--target-max-jump-px", type=float, default=80.0, help="Allow only small target motion between frames before requiring confirmation")
+    parser.add_argument("--target-smooth-alpha", type=float, default=0.65, help="Blend factor for target smoothing, smaller is steadier")
     parser.add_argument("--drone-pose", default=None, help='JSON string like {"x":0,"y":0,"z":1.2,"yaw":0.0}')
     parser.add_argument("--no-display", action="store_true", help="Disable live server preview window")
     parser.add_argument("--record", default=None, metavar="PATH", help="Append detection records to a JSONL file for later analysis")
+    parser.add_argument("--log-file", default=None, metavar="PATH", help="Write full INFO logs to this file instead of the terminal (auto-enabled when stdin is a TTY)")
     return parser.parse_args()
 
 
@@ -113,27 +114,6 @@ def _build_overlay_payload(response, task_prompt: str | None, projection: str | 
     return overlay_payload
 
 
-def _persist_record(
-    args: argparse.Namespace,
-    *,
-    packet_seq: int,
-    preferred_label: str | None,
-    infer_latency_ms: float,
-    response,
-) -> None:
-    if not args.record:
-        return
-    record = build_detection_record(
-        ts=time.time(),
-        seq=packet_seq,
-        runtime_label=preferred_label,
-        infer_ms=infer_latency_ms,
-        response=response,
-    )
-    try:
-        append_detection_record(args.record, record)
-    except OSError as exc:
-        logger.warning("record write failed: %s", exc)
 
 
 def _infer_loop(state: SharedState, args: argparse.Namespace, pose: DronePose | None) -> None:
@@ -230,7 +210,7 @@ def _infer_loop(state: SharedState, args: argparse.Namespace, pose: DronePose | 
                 tracking.miss_count = 0
 
             infer_latency_ms = (time.time() - started_at) * 1000.0
-            _persist_record(
+            persist_record(
                 args,
                 packet_seq=packet.seq,
                 preferred_label=preferred_label,
@@ -310,9 +290,32 @@ def _display_loop(state: SharedState, args: argparse.Namespace) -> None:
     cv2.destroyAllWindows()
 
 
+def _setup_logging(args: argparse.Namespace) -> None:
+    fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+
+    stdin_is_tty = sys.stdin is not None and sys.stdin.isatty()
+    log_file = args.log_file or (f"zmq_receiver.log" if stdin_is_tty else None)
+
+    if log_file:
+        fh = logging.FileHandler(log_file, encoding="utf-8")
+        fh.setLevel(logging.INFO)
+        fh.setFormatter(logging.Formatter(fmt))
+        root.addHandler(fh)
+
+    sh = logging.StreamHandler()
+    sh.setLevel(logging.WARNING if stdin_is_tty else logging.INFO)
+    sh.setFormatter(logging.Formatter(fmt))
+    root.addHandler(sh)
+
+    if stdin_is_tty:
+        print(f"[hoverai] Logs → {log_file}  (terminal shows warnings only)", flush=True)
+
+
 def main() -> None:
     args = parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    _setup_logging(args)
 
     ctx = zmq.Context.instance()
     sock = ctx.socket(zmq.PULL)

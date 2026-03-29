@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import argparse
 import json
+import logging
+import time
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger("hoverai.stats_recorder")
 
 
 def build_detection_record(
@@ -49,3 +54,26 @@ def append_detection_record(path: str, record: dict[str, Any]) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open('a', encoding='utf-8') as handle:
         handle.write(json.dumps(record) + '\n')
+
+
+def persist_record(
+    args: argparse.Namespace,
+    *,
+    packet_seq: int,
+    preferred_label: str | None,
+    infer_latency_ms: float,
+    response: Any,
+) -> None:
+    if not args.record:
+        return
+    record = build_detection_record(
+        ts=time.time(),
+        seq=packet_seq,
+        runtime_label=preferred_label,
+        infer_ms=infer_latency_ms,
+        response=response,
+    )
+    try:
+        append_detection_record(args.record, record)
+    except OSError as exc:
+        logger.warning("record write failed: %s", exc)

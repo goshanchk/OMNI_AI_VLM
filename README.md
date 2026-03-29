@@ -8,12 +8,6 @@ Start the server:
 ```bash
 cd /media/imit-learn/ISR_2T3/OMNI_AI_VLM && source scripts/activate_vlm_hoverai.sh && python -m server.zmq.receiver --bind tcp://*:5555 --qwen-every 5
 ```
-
-Start the server with detection recording:
-```bash
-cd /media/imit-learn/ISR_2T3/OMNI_AI_VLM && source scripts/activate_vlm_hoverai.sh && python -m server.zmq.receiver --bind tcp://*:5555 --qwen-every 5 --record detections.jsonl
-```
-
 ## Client
 
 Start the client on Orange Pi from the same project root:
@@ -55,3 +49,25 @@ reset
 ```
 
 `projection wall` selects wall projection, `projection screen` selects the drone screen.
+
+## Data collection (detection range & stability)
+
+Start server with `--record`:
+```bash
+cd /media/imit-learn/ISR_2T3/OMNI_AI_VLM && source scripts/activate_vlm_hoverai.sh && python -m server.zmq.receiver --bind tcp://*:5555 --disable-qwen --record detections.jsonl
+```
+
+## Analytics
+
+```bash
+# All objects
+python tools/analyze_detections.py detections.jsonl
+
+# Single object
+python tools/analyze_detections.py detections.jsonl --label headphones
+
+# Limit depth range
+python tools/analyze_detections.py detections.jsonl --label cube --max-depth 3.0
+```
+
+Report shows: detection rate, max detection distance, depth stability (CV), confidence, detection run lengths.

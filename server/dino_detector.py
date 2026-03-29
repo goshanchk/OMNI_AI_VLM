@@ -11,7 +11,7 @@ from common.geometry import bbox_center
 from common.schemas import DetectionObject
 
 DINO_MODEL_ID = os.getenv("DINO_MODEL_ID", "IDEA-Research/grounding-dino-base")
-DINO_BOX_THRESHOLD = float(os.getenv("DINO_BOX_THRESHOLD", "0.35"))
+DINO_BOX_THRESHOLD = float(os.getenv("DINO_BOX_THRESHOLD", "0.48"))
 DINO_TEXT_THRESHOLD = float(os.getenv("DINO_TEXT_THRESHOLD", "0.30"))
 
 DEFAULT_LABELS = tuple(
@@ -23,26 +23,26 @@ DEFAULT_LABELS = tuple(
     if label.strip()
 )
 CLASS_THRESHOLDS = {
-    "person": 0.42,
-    "chair": 0.40,
-    "table": 0.38,
-    "laptop": 0.42,
-    "door": 0.40,
-    "window": 0.42,
-    "cabinet": 0.42,
-    "box": 0.38,
-    "bag": 0.38,
-    "bottle": 0.40,
-    "keyboard": 0.46,
-    "mouse": 0.46,
-    "robot": 0.46,
-    "fish": 0.44,
-    "cube": 0.40,
-    "ball": 0.40,
-    "headphones": 0.44,
-    "plant": 0.40,
-    "book": 0.40,
-    "cup": 0.40,
+    "person": 0.54,
+    "chair": 0.50,
+    "table": 0.48,
+    "laptop": 0.52,
+    "door": 0.50,
+    "window": 0.52,
+    "cabinet": 0.50,
+    "box": 0.48,
+    "bag": 0.48,
+    "bottle": 0.50,
+    "keyboard": 0.56,
+    "mouse": 0.56,
+    "robot": 0.54,
+    "fish": 0.52,
+    "cube": 0.50,
+    "ball": 0.50,
+    "headphones": 0.52,
+    "plant": 0.50,
+    "book": 0.50,
+    "cup": 0.50,
 }
 
 
