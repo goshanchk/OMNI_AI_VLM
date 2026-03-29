@@ -27,6 +27,11 @@ htmlcov/
 
 # Logs and local runtime output
 *.log
+*.jsonl
+zmq_receiver.log
+detections.jsonl
+runtime/
+artifacts/
 
 # Local model artifacts and large binaries
 *.pt

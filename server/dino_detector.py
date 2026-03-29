@@ -123,7 +123,7 @@ def _is_reasonable(label: str, bbox: list[int], width: int, height: int) -> bool
     aspect = bbox_w / max(bbox_h, 1)
     touches_border = bbox[0] <= 1 or bbox[1] <= 1 or bbox[2] >= width - 2 or bbox[3] >= height - 2
 
-    if area_ratio < 0.002:
+    if area_ratio < 0.001:
         return False
     if label not in {"door", "window"} and area_ratio > 0.55:
         return False
@@ -133,9 +133,9 @@ def _is_reasonable(label: str, bbox: list[int], width: int, height: int) -> bool
         return False
     if label == "fish" and (aspect < 0.35 or aspect > 2.8):
         return False
-    if label == "cube" and (area_ratio < 0.003 or area_ratio > 0.20):
+    if label == "cube" and (area_ratio < 0.001 or area_ratio > 0.20):
         return False
-    if label == "cube" and (aspect < 0.6 or aspect > 1.7):
+    if label == "cube" and (aspect < 0.4 or aspect > 2.2):
         return False
     if label == "ball" and (area_ratio < 0.002 or area_ratio > 0.16):
         return False

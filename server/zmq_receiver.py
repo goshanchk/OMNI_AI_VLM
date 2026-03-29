@@ -27,6 +27,23 @@ logger = logging.getLogger('hoverai.zmq_receiver')
 WINDOW_NAME = 'HoverAI ZeroMQ Live Preview'
 DISPLAY_SCALE = float(os.getenv('HOVERAI_PREVIEW_SCALE', '1.35'))
 
+LABEL_KEYS: dict[int, str | None] = {
+    ord('0'): None,
+    ord('p'): 'person',
+    ord('c'): 'cube',
+    ord('b'): 'ball',
+    ord('h'): 'headphones',
+    ord('f'): 'fish',
+    ord('r'): 'robot',
+    ord('t'): 'table',
+    ord('l'): 'laptop',
+    ord('d'): 'door',
+    ord('n'): 'plant',
+    ord('k'): 'book',
+    ord('u'): 'cup',
+    ord('e'): 'bottle',
+}
+
 
 @dataclass
 class LatestPacket:
@@ -51,6 +68,7 @@ class SharedState:
     error_text: str | None = None
     stop: bool = False
     lock: threading.Lock | None = None
+    runtime_label: str | None = None
 
 
 def parse_args() -> argparse.Namespace:
@@ -69,6 +87,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--target-smooth-alpha', type=float, default=0.35, help='Blend factor for target smoothing, smaller is steadier')
     parser.add_argument('--drone-pose', default=None, help='JSON string like {"x":0,"y":0,"z":1.2,"yaw":0.0}')
     parser.add_argument('--no-display', action='store_true', help='Disable live server preview window')
+    parser.add_argument('--record', default=None, metavar='PATH', help='Append detection records to a JSONL file for later analysis')
     return parser.parse_args()
 
 
@@ -363,14 +382,28 @@ def _infer_loop(state: SharedState, args: argparse.Namespace, pose: DronePose | 
     miss_count = 0
     jump_candidate = None
     jump_count = 0
+    last_effective_label: str | None = None
 
     while not state.stop:
         with state.lock:
             packet = state.latest_packet
+            runtime_label = state.runtime_label
 
         if packet is None or packet.seq == last_processed_seq:
             time.sleep(0.01)
             continue
+
+        preferred_label_eff = runtime_label if runtime_label is not None else (args.preferred_label or packet.preferred_label)
+        if preferred_label_eff != last_effective_label:
+            last_target = None
+            last_target_ts = None
+            candidate_target = None
+            candidate_count = 0
+            miss_count = 0
+            jump_candidate = None
+            jump_count = 0
+            last_qwen_vision = None
+            last_effective_label = preferred_label_eff
 
         started_at = time.time()
         try:
@@ -382,7 +415,7 @@ def _infer_loop(state: SharedState, args: argparse.Namespace, pose: DronePose | 
                 depth_map=packet.depth_map,
                 camera_intrinsics=packet.intrinsics,
                 pose=pose,
-                preferred_label=args.preferred_label or packet.preferred_label,
+                preferred_label=preferred_label_eff or None,
                 prefer_wall=bool(args.prefer_wall or packet.prefer_wall),
                 task_prompt=args.task_prompt or packet.task_prompt,
                 enable_dino=not args.disable_dino,
@@ -400,7 +433,7 @@ def _infer_loop(state: SharedState, args: argparse.Namespace, pose: DronePose | 
                 response.vision.projection_wall = last_qwen_vision['projection_wall'].model_copy(deep=True)
                 response.vision.projection_surface = last_qwen_vision['projection_surface'].model_copy(deep=True)
 
-            requested_target_label = _requested_target_label(packet, args)
+            requested_target_label = preferred_label_eff if preferred_label_eff else _requested_target_label(packet, args)
             response, reused_previous_target, _ = _reuse_target_if_recent(
                 response,
                 last_target=last_target,
@@ -449,6 +482,40 @@ def _infer_loop(state: SharedState, args: argparse.Namespace, pose: DronePose | 
                 miss_count = 0
 
             infer_latency_ms = (time.time() - started_at) * 1000.0
+
+            if args.record:
+                tgt = response.target
+                depth_m = None
+                confidence = None
+                bbox_2d = None
+                is_hold = False
+                if tgt is not None:
+                    rv = tgt.relative_camera_vector
+                    depth_m = round(float(rv[2]), 3) if rv and len(rv) == 3 and rv[2] > 0 else None
+                    is_hold = bool(tgt.meta.get('temporal_hold') or tgt.meta.get('drop_hold'))
+                    for obj in response.vision.objects:
+                        if obj.label == tgt.label:
+                            confidence = round(float(obj.confidence), 4) if obj.confidence is not None else None
+                            bbox_2d = obj.bbox_2d
+                            break
+                record = {
+                    'ts': round(time.time(), 3),
+                    'seq': packet.seq,
+                    'runtime_label': preferred_label_eff or None,
+                    'label': tgt.label if tgt is not None else None,
+                    'depth_m': depth_m,
+                    'confidence': confidence,
+                    'bbox_2d': bbox_2d,
+                    'source': tgt.source if tgt is not None else None,
+                    'is_hold': is_hold,
+                    'image_shape': response.vision.image_shape,
+                    'infer_ms': round(infer_latency_ms, 1),
+                }
+                try:
+                    with open(args.record, 'a', encoding='utf-8') as _f:
+                        _f.write(json.dumps(record) + '\n')
+                except OSError as _e:
+                    logger.warning('record write failed: %s', _e)
             overlay_payload = response.model_dump(exclude={'vision': {'raw_text'}})
             if args.task_prompt or packet.task_prompt:
                 overlay_payload['task_prompt'] = args.task_prompt or packet.task_prompt
@@ -479,6 +546,7 @@ def _display_loop(state: SharedState) -> None:
             received_count = state.received_count
             processed_count = state.processed_count
             error_text = state.error_text
+            runtime_label = state.runtime_label
 
         if packet is None:
             time.sleep(0.01)
@@ -496,14 +564,21 @@ def _display_loop(state: SharedState) -> None:
             status += f' | infer={infer_latency_ms:.1f}ms'
         cv2.putText(rendered, status, (12, rendered.shape[0] - 14), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
 
+        label_text = f'target: {runtime_label or "all"}  [0=all p=person c=cube b=ball h=headphones r=robot f=fish t=table]'
+        cv2.putText(rendered, label_text, (12, rendered.shape[0] - 32), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (180, 220, 60), 1, cv2.LINE_AA)
+
         if error_text:
-            cv2.putText(rendered, error_text[:110], (12, rendered.shape[0] - 34), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (0, 0, 255), 1, cv2.LINE_AA)
+            cv2.putText(rendered, error_text[:110], (12, rendered.shape[0] - 52), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (0, 0, 255), 1, cv2.LINE_AA)
 
         cv2.imshow(WINDOW_NAME, rendered)
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
             state.stop = True
             break
+        elif key in LABEL_KEYS:
+            with state.lock:
+                state.runtime_label = LABEL_KEYS[key]
+            logger.info('runtime_label switched to %s', LABEL_KEYS[key])
 
     cv2.destroyAllWindows()
 
