@@ -1,33 +1,24 @@
 # HoverAI Qwen2.5-VL
 
-Orange Pi sends RGB + depth over ZeroMQ, the server runs detection and returns objects, target, and projection surface.
+Orange Pi sends RGB + depth over ZeroMQ, and the server returns detected objects, target, and projection surface.
 
 ## Server
 
-Activate the environment:
-```bash
-cd /media/imit-learn/ISR_2T3/OMNI_AI_VLM
-source scripts/activate_vlm_hoverai.sh
-```
-
 Start the server:
 ```bash
-python -m server.zmq.receiver --bind tcp://*:5555 --qwen-every 5
+cd /media/imit-learn/ISR_2T3/OMNI_AI_VLM && source scripts/activate_vlm_hoverai.sh && python -m server.zmq.receiver --bind tcp://*:5555 --qwen-every 5
 ```
 
 Start the server with detection recording:
 ```bash
-python -m server.zmq.receiver --bind tcp://*:5555 --disable-qwen --record detections.jsonl
+cd /media/imit-learn/ISR_2T3/OMNI_AI_VLM && source scripts/activate_vlm_hoverai.sh && python -m server.zmq.receiver --bind tcp://*:5555 --qwen-every 5 --record detections.jsonl
 ```
 
 ## Client
 
-Start the client on Orange Pi:
+Start the client on Orange Pi from the same project root:
 ```bash
-cd ~/HoverAI_VLM/OMNI_AI_VLM
-source ../.venv/bin/activate
-export PYTHONPATH=$PWD
-python tools/d435i_zmq_sender.py --server-ip 192.168.50.185 --port 5555 --infer-every 1 --infer-width 448 --jpeg-quality 60 --send-depth
+cd ~/HoverAI_VLM/OMNI_AI_VLM && source scripts/activate_vlm_hoverai.sh && python tools/d435i_zmq_sender.py --server-ip 192.168.50.185 --port 5555 --infer-every 1 --infer-width 448 --jpeg-quality 60 --send-depth
 ```
 
 ## Runtime Control
